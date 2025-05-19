@@ -1,0 +1,29 @@
+slgraph consists of graph formats suitable for sublinear-time graph algorithms and code for reading and writing these formats.
+
+For sublinear-time graph algorithms, and property testing in particular, the following constant-time operations are important:
+
+1) Reading a graph file - this is where most existing graph libraries need linear time
+
+2) Query the degree of a node
+3) Query the i-th neighbour of a node
+4) Get a random node via uniform sampling
+
+5) Query the i-th incident edge of a node
+6) Query the incident nodes of an edge
+7) Get a random edge via uniform smapling (availability of this query can make a substantial difference in runtime for some problems)
+
+8) Support for directed graphs - query incoming and outgoing degrees and edges / neighbours separately (availability of these queries can make a substantial difference in runtime for some problems)
+9) Flexible support for node labels
+10) Flexible support for edge labels
+11) Flexible support for graph labels
+
+12) Support for huge graphs
+
+The current implementation achieves 1)-7) and 12). 8)-12) are not yet implemented (though there is some support for directed graphs).
+
+
+
+See doc/README for details on the format.
+
+See test/* for examples
+

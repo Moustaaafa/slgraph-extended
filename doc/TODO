@@ -1,0 +1,8 @@
+* Support for labels on graphs, nodes, edges.
+* Boost graph interface for better C++ support.
+* Conversion utilities for more graph formats.
+* Support for querying out-edges and in-edges separately for better directed graph support.
+* Support for removing edges
+* Support for removing nodes.
+* Fix error handling when the node / edge limit of 2^48 is reached.
+

@@ -1,0 +1,615 @@
+#include "slgraph.h"
+
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+
+#define SLGRAPH_HEADERSIZE_BASIC 16
+#define SLGRAPH_HEADERSIZE (SLGRAPH_HEADERSIZE_BASIC + 8 * 3 + 6)
+#define SLGRAPH_HEADER_NODELIST (SLGRAPH_HEADERSIZE_BASIC + 8 * 1)
+#define SLGRAPH_HEADER_EDGELIST (SLGRAPH_HEADERSIZE_BASIC + 8 * 2)
+
+#define SLGRAPH_SIZE 6
+#define SLGRAPH_LISTHEADERSIZE (SLGRAPH_SIZE * 2)
+// OLD: Node entry was 8-byte offset + 6-byte label = 14 bytes
+// #define SLGRAPH_NODESIZE (8 + 6)
+
+// NEW: Node entry now has 8-byte out_offset + 8-byte in_offset + 6-byte label = 22 bytes
+#define SLGRAPH_NODESIZE (8 + 8 + 6)
+// OLD: Edge entry was node0 + node1 + label = 18 bytes
+// #define SLGRAPH_EDGESIZE (6 + 6 + 6)
+
+// NEW: Edge entry is node0 + node1 + label + directed flag = 19 bytes
+#define SLGRAPH_EDGESIZE (6 + 6 + 6 + 1)
+#define SLGRAPH_INCIDENCESIZE 6
+
+// Write a 6-byte little-endian integer
+void write_6_bytes(unsigned char *dst, uint64_t value) {
+    for (int i = 0; i < 6; ++i)
+        dst[i] = (value >> (8 * i)) & 0xFF;
+}
+
+// Read a 6-byte little-endian integer
+uint64_t read_6_bytes(const unsigned char *src) {
+    uint64_t value = 0;
+    for (int i = 5; i >= 0; --i) {
+        value <<= 8;
+        value |= src[i];
+    }
+    return value;
+}
+static int slgraph_resize(slgraph_t *g, size_t s);
+
+// Add an incidence list with space for at least size neighbours
+static unsigned char *slgraph_add_incidencelist(slgraph_t *g, uint_fast64_t size)
+{
+	const size_t listsize = SLGRAPH_LISTHEADERSIZE + size * SLGRAPH_INCIDENCESIZE;
+	size_t free = g->free;
+
+	if(free < listsize)
+	{
+		size_t addfree = (g->size / 8) + listsize + 64;
+		if(slgraph_resize(g, g->size + addfree))
+			return(0);
+		free += addfree;
+	}
+
+	g->free = free - listsize;
+
+	slgraph_write48(g->ptr + (g->size - free), size);
+	return(g->ptr + (g->size - free));
+}
+
+uint_fast64_t slgraph_add_directed_edge(slgraph_t *g, uint_fast64_t src, uint_fast64_t dst) {
+    uint64_t edge_count = slgraph_edges(g);
+    uint64_t edge_capacity = slgraph_read48(slgraph_edgelist(g));
+
+    // Expand edge list if needed
+    if (edge_count >= edge_capacity) {
+        uint64_t newedges = (edge_count + 32) * 4;
+        size_t oldsize = g->size;
+        size_t newsize = g->size + SLGRAPH_LISTHEADERSIZE + (edge_count + newedges) * SLGRAPH_EDGESIZE;
+
+        if (slgraph_resize(g, newsize))
+            return SLGRAPH_INVALID_EDGE;
+
+        memcpy(g->ptr + (oldsize - g->free), slgraph_edgelist(g),
+               SLGRAPH_LISTHEADERSIZE + edge_count * SLGRAPH_EDGESIZE);
+
+        slgraph_write64(g->ptr + SLGRAPH_HEADER_EDGELIST, oldsize - g->free);
+        slgraph_write48(slgraph_edgelist(g), edge_count + newedges);
+    }
+
+    // Write edge
+    unsigned char *edge_entry = slgraph_edgelist(g) + SLGRAPH_LISTHEADERSIZE + edge_count * SLGRAPH_EDGESIZE;
+    write_6_bytes(edge_entry, src);
+    write_6_bytes(edge_entry + 6, dst);
+    write_6_bytes(edge_entry + 12, 0); // label
+    edge_entry[18] = 1; // directed flag
+
+    write_6_bytes(slgraph_edgelist(g) + SLGRAPH_SIZE, edge_count + 1);
+
+    // Handle node incidence lists
+    unsigned char *node_list = slgraph_nodelist(g) + SLGRAPH_LISTHEADERSIZE;
+    unsigned char *src_entry = node_list + src * SLGRAPH_NODESIZE;
+    unsigned char *dst_entry = node_list + dst * SLGRAPH_NODESIZE;
+
+    uint64_t out_offset = slgraph_read64(src_entry);
+    uint64_t in_offset  = slgraph_read64(dst_entry + 8);
+
+    unsigned char *out_list;
+    if (!out_offset) {
+        out_list = slgraph_add_incidencelist(g, 4);
+        if (!out_list) return SLGRAPH_INVALID_EDGE;
+        out_offset = out_list - g->ptr;
+        slgraph_write64(src_entry + 0, out_offset);
+    } else {
+        out_list = g->ptr + out_offset;
+    }
+
+    unsigned char *in_list;
+    if (!in_offset) {
+        in_list = slgraph_add_incidencelist(g, 4);
+        if (!in_list) return SLGRAPH_INVALID_EDGE;
+        in_offset = in_list - g->ptr;
+        slgraph_write64(dst_entry + 8, in_offset);
+    } else {
+        in_list = g->ptr + in_offset;
+    }
+
+    uint64_t out_deg = read_6_bytes(out_list + SLGRAPH_SIZE);
+    uint64_t in_deg  = read_6_bytes(in_list + SLGRAPH_SIZE);
+
+    write_6_bytes(out_list + SLGRAPH_LISTHEADERSIZE + out_deg * SLGRAPH_INCIDENCESIZE, edge_count);
+    write_6_bytes(in_list  + SLGRAPH_LISTHEADERSIZE + in_deg * SLGRAPH_INCIDENCESIZE, edge_count);
+
+    write_6_bytes(out_list + SLGRAPH_SIZE, out_deg + 1);
+    write_6_bytes(in_list  + SLGRAPH_SIZE, in_deg + 1);
+
+    return edge_count;
+}
+
+
+
+// These read- and write-functions are used to access little-endian integers at arbitrary memory locations
+// independent of host endianness and alignment requirements.
+ uint_fast64_t slgraph_read48(const unsigned char *ptr)
+{
+	uint_fast32_t ret = 0;
+
+	for(uint_fast8_t i = 0; i < 6; i++)
+		ret |= ((uint_fast64_t)(ptr[i]) << i * 8);
+
+	return(ret);
+}
+
+ void slgraph_write48(unsigned char *ptr, uint_fast64_t v)
+{
+	for(uint_fast8_t i = 0; i < 6; i++)
+		ptr[i] = (v >> i * 8) & 0xff;
+}
+ uint_fast64_t slgraph_read64(const unsigned char *ptr)
+{
+	uint_fast32_t ret = 0;
+
+	for(uint_fast8_t i = 0; i < 8; i++)
+		ret |= ((uint_fast64_t)(ptr[i]) << i * 8);
+
+	return(ret);
+}
+
+ void slgraph_write64(unsigned char *ptr, uint_fast64_t v)
+{
+	for(uint_fast8_t i = 0; i < 8; i++)
+		ptr[i] = (v >> i * 8) & 0xff;
+}
+
+// Resize graph file
+// (to create free space at the end for future use or to eliminate free space at the end to reduce file size)
+static int slgraph_resize(slgraph_t *g, size_t s)
+{
+	munmap(g->ptr, g->size);
+
+	if(ftruncate(g->fd, s))
+	{
+		close(g->fd);
+		return(-1);
+	}
+
+	g->size = s;
+
+	if((g->ptr = mmap(0, g->size, g->readonly ? PROT_READ : (PROT_READ | PROT_WRITE), MAP_SHARED, g->fd, 0)) == MAP_FAILED)
+	{
+		close(g->fd);
+		return(-1);
+	}
+
+	slgraph_write64(g->ptr + SLGRAPH_HEADERSIZE_BASIC, g->size);
+
+	return(0);
+}
+
+// Get pointer to node list
+ unsigned char *slgraph_nodelist(const slgraph_t *g)
+{
+	return(g->ptr + slgraph_read64(g->ptr + SLGRAPH_HEADER_NODELIST));
+}
+
+// Get pointer to edge list
+static unsigned char *slgraph_edgelist(const slgraph_t *g)
+{
+	return(g->ptr + slgraph_read64(g->ptr + SLGRAPH_HEADER_EDGELIST));
+}
+
+// Get pointer to incidence list for node (return 0 for nodes of degree 0)
+static unsigned char *slgraph_incidencelist(const slgraph_t *g, slgraph_node_t n)
+{
+	unsigned char *nodeptr = slgraph_nodelist(g) + SLGRAPH_LISTHEADERSIZE + n * SLGRAPH_NODESIZE;
+	uint_fast64_t incidence_offset = slgraph_read64(nodeptr);
+	return(!incidence_offset ? 0 : g->ptr + incidence_offset);
+}
+
+
+
+static int slgraph_make_incident(slgraph_t *g, slgraph_node_t n, slgraph_edge_t e)
+{
+	unsigned char *listptr = slgraph_incidencelist(g, n);
+	uint_fast64_t listsize = !listptr ? 0 : slgraph_read48(listptr);
+	uint_fast64_t degree = !listptr ? 0 : slgraph_read48(listptr + SLGRAPH_SIZE);
+
+	if(degree + 1 > listsize)
+	{
+		listptr = slgraph_add_incidencelist(g, degree * 2 + 1);
+		unsigned char *oldlistptr = slgraph_incidencelist(g, n); // Can't reuse previous listptr, since slgraph_add_incidencelist() might have remapped.
+		if(!listptr)
+			return(-1);
+		if(oldlistptr)
+			memcpy(listptr + SLGRAPH_LISTHEADERSIZE, oldlistptr + SLGRAPH_LISTHEADERSIZE, degree * SLGRAPH_INCIDENCESIZE);
+		slgraph_write64(slgraph_nodelist(g) + SLGRAPH_LISTHEADERSIZE + n * SLGRAPH_NODESIZE, listptr - g->ptr);
+	}
+
+	slgraph_write48(listptr + SLGRAPH_LISTHEADERSIZE + degree * SLGRAPH_INCIDENCESIZE, e);
+	slgraph_write48(listptr + SLGRAPH_SIZE, degree + 1);
+
+	return(0);
+}
+
+static void slgraph_unmake_incident(slgraph_t *g, slgraph_node_t n, slgraph_edge_t e)
+{
+	unsigned char *listptr = slgraph_incidencelist(g, n);
+	uint_fast64_t degree = slgraph_read48(listptr + SLGRAPH_SIZE);
+
+	for(uint_fast64_t i = 0;; i++)
+		if(slgraph_read48(listptr + SLGRAPH_LISTHEADERSIZE + i * SLGRAPH_INCIDENCESIZE) == e)
+		{
+			if(i + 1 < degree)
+				memcpy(listptr + SLGRAPH_LISTHEADERSIZE + i * SLGRAPH_INCIDENCESIZE, listptr + SLGRAPH_LISTHEADERSIZE + (degree - 1) * SLGRAPH_INCIDENCESIZE, SLGRAPH_INCIDENCESIZE);
+			slgraph_write48(listptr + SLGRAPH_SIZE, degree - 1);
+			return;
+		}
+}
+
+// Write a new header (and empty node and edge lists)
+static void slgraph_headerinit(unsigned char *header)
+{
+	// Magic number
+	memcpy(header, u8"slgraph", 8);
+
+	// Version
+	slgraph_write64(header + 8, 1);
+
+	// Size
+	slgraph_write64(header + SLGRAPH_HEADERSIZE_BASIC, SLGRAPH_HEADERSIZE + SLGRAPH_LISTHEADERSIZE * 2);
+
+	// Nodelist and edgelist offsets
+	slgraph_write64(header + SLGRAPH_HEADERSIZE_BASIC + 8, SLGRAPH_HEADERSIZE);
+	slgraph_write64(header + SLGRAPH_HEADERSIZE_BASIC + 16, SLGRAPH_HEADERSIZE + SLGRAPH_LISTHEADERSIZE);
+
+	// Labels
+	slgraph_write48(header + SLGRAPH_HEADERSIZE_BASIC + 24, 0xffffffffffffull);
+
+	// Empty nodelist and edgelist
+	slgraph_write48(header + SLGRAPH_HEADERSIZE, 0);
+	slgraph_write48(header + SLGRAPH_HEADERSIZE + SLGRAPH_SIZE, 0);
+	slgraph_write48(header + SLGRAPH_HEADERSIZE + SLGRAPH_LISTHEADERSIZE, 0);
+	slgraph_write48(header + SLGRAPH_HEADERSIZE + SLGRAPH_LISTHEADERSIZE + SLGRAPH_SIZE, 0);
+}
+
+int slgraph_new(slgraph_t *g)
+{
+	char filename[] = "/tmp/slgraph_graph_XXXXXX";
+
+	if((g->fd = mkstemp(filename)) == -1)
+		return(-1);
+
+	unsigned char header[SLGRAPH_HEADERSIZE + SLGRAPH_LISTHEADERSIZE * 2];
+
+	slgraph_headerinit(header);
+
+	g->size = SLGRAPH_HEADERSIZE + SLGRAPH_LISTHEADERSIZE * 2;
+
+	if(write(g->fd, header, SLGRAPH_HEADERSIZE + SLGRAPH_LISTHEADERSIZE * 2) == -1)
+	{
+		close(g->fd);
+		return(-1);
+	}
+
+	if((g->ptr = mmap(0, g->size, PROT_READ | PROT_WRITE, MAP_SHARED, g->fd, 0)) == MAP_FAILED)
+	{
+		close(g->fd);
+		return(-1);
+	}
+
+	g->readonly = false;
+	g->free = 0;
+
+	return(0);
+}
+
+int slgraph_open(slgraph_t *g, const char *restrict filename, bool readonly)
+{
+	struct stat stat;
+
+	// Open file with appropriate permissions
+	if ((g->fd = open(filename, readonly ? O_RDONLY : (O_RDWR | O_CREAT),
+	                  S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1)
+		return -1;
+
+	fstat(g->fd, &stat);
+
+	// If file is empty and we're allowed to write, initialize header
+	if (!stat.st_size && !readonly) {
+		unsigned char header[SLGRAPH_HEADERSIZE + SLGRAPH_LISTHEADERSIZE * 2];
+		slgraph_headerinit(header);
+
+		slgraph_write64(header + 8, 2);  // Set version 2 (for directed graphs)
+		g->version = 2;                 // ✅ Ensure version is tracked immediately
+
+		if (write(g->fd, header, sizeof(header)) == -1) {
+			close(g->fd);
+			return -1;
+		}
+
+		lseek(g->fd, 0, SEEK_SET);
+		g->size = sizeof(header);
+	}
+	else if (stat.st_size < SLGRAPH_HEADERSIZE_BASIC) {
+		// File too small to be a valid slgraph
+		close(g->fd);
+		return -1;
+	}
+	else if (stat.st_size) {
+		// Read header portion to verify structure
+		if ((g->ptr = mmap(0, SLGRAPH_HEADERSIZE_BASIC, PROT_READ, MAP_SHARED, g->fd, 0)) == MAP_FAILED) {
+			close(g->fd);
+			return -1;
+		}
+
+		uint64_t version = slgraph_read64(g->ptr + 8);
+		if (memcmp(g->ptr, u8"slgraph", 8) || (version != 1 && version != 2)) {
+			munmap(g->ptr, SLGRAPH_HEADERSIZE_BASIC);
+			close(g->fd);
+			return -1;
+		}
+		g->version = version;
+		g->size = slgraph_read64(g->ptr + 16);
+		munmap(g->ptr, SLGRAPH_HEADERSIZE_BASIC);
+	}
+
+	// Remap entire graph file now that we know its size
+	if ((g->ptr = mmap(0, g->size,
+	                   readonly ? PROT_READ : (PROT_READ | PROT_WRITE),
+	                   MAP_SHARED, g->fd, 0)) == MAP_FAILED) {
+		close(g->fd);
+		return -1;
+	}
+
+	g->readonly = readonly;
+	g->free = 0;
+
+	return 0;
+}
+
+
+
+int slgraph_nodelist_expand(slgraph_t *g, uint_fast64_t n)
+{
+	uint_fast64_t nodes = slgraph_nodes(g);
+
+	if(nodes >= n)
+		return(0);
+
+	size_t oldsize = g->size;
+	size_t newsize = g->size + SLGRAPH_LISTHEADERSIZE + n * SLGRAPH_NODESIZE;
+	if(slgraph_resize(g, newsize))
+		return(-1);
+	memcpy(g->ptr + (oldsize - g->free), slgraph_nodelist(g), SLGRAPH_LISTHEADERSIZE + nodes * SLGRAPH_NODESIZE);
+	slgraph_write64(g->ptr + SLGRAPH_HEADER_NODELIST, oldsize - g->free);
+	slgraph_write48(slgraph_nodelist(g), n);
+
+	return(0);
+}
+
+void slgraph_close(slgraph_t *g)
+{
+	if(!g->readonly)
+	{
+		slgraph_write64(g->ptr + SLGRAPH_HEADERSIZE_BASIC, g->size - g->free);
+		munmap(g->ptr, g->size);
+		if(g->free)
+		if (ftruncate(g->fd, g->size - g->free) == -1) {
+			perror("ftruncate failed");
+		}
+			}
+	close(g->fd);
+}
+
+int slgraph_copy(slgraph_t *g, const slgraph_t *h)
+{
+	size_t nodelist_size = SLGRAPH_LISTHEADERSIZE + slgraph_nodes(h) * SLGRAPH_NODESIZE;
+	size_t edgelist_size = SLGRAPH_LISTHEADERSIZE + slgraph_edges(h) * SLGRAPH_EDGESIZE;
+	size_t incidencelists_size = 0;
+
+	uint_fast64_t n = slgraph_nodes(h);
+
+	for(uint_fast64_t i = 0; i < n; i++)
+	{
+		uint_fast64_t degree = slgraph_degree(h, i);
+		incidencelists_size += !degree ? 0 : SLGRAPH_LISTHEADERSIZE + degree * SLGRAPH_INCIDENCESIZE;
+	}
+
+	if(slgraph_resize(g, SLGRAPH_HEADERSIZE + nodelist_size + edgelist_size + incidencelists_size))
+		return(-1);
+
+	// Copy node list
+	slgraph_write64(g->ptr + SLGRAPH_HEADER_NODELIST, SLGRAPH_HEADERSIZE);
+	memcpy(slgraph_nodelist(g), slgraph_nodelist(h), nodelist_size);
+	slgraph_write48(slgraph_nodelist(g), slgraph_nodes(g));
+
+	// Copy edge list
+	slgraph_write64(g->ptr + SLGRAPH_HEADER_EDGELIST, SLGRAPH_HEADERSIZE + nodelist_size);
+	memcpy(slgraph_edgelist(g), slgraph_edgelist(h), edgelist_size);
+	slgraph_write48(slgraph_edgelist(g), slgraph_edges(g));
+
+	g->free = incidencelists_size;
+
+	// Copy incidence lists
+	for(uint_fast64_t i = 0; i < n; i++)
+	{
+		uint_fast64_t degree = slgraph_degree(h, i);
+
+		if(!degree)
+			continue;
+
+		unsigned char *listptr = slgraph_add_incidencelist(g, degree);
+		assert(listptr); // slgraph_add_incidencelist() should never need to allocate extra memory, since we already allocated sufficient free space earlier.
+		slgraph_write64(slgraph_nodelist(g) + SLGRAPH_LISTHEADERSIZE + i * SLGRAPH_NODESIZE, listptr - g->ptr);
+		memcpy(listptr, slgraph_incidencelist(h, i), SLGRAPH_LISTHEADERSIZE + degree * 6);
+	}
+
+	return(0);
+}
+
+uint_fast64_t slgraph_nodes(const slgraph_t *g)
+{
+	return(slgraph_read48(slgraph_nodelist(g) + SLGRAPH_SIZE));
+}
+
+uint_fast64_t slgraph_edges(const slgraph_t *g)
+{
+	return(slgraph_read48(slgraph_edgelist(g) + SLGRAPH_SIZE));
+}
+
+uint_fast64_t slgraph_degree(const slgraph_t *g, slgraph_node_t n)
+{
+	const unsigned char *incidenceptr = slgraph_incidencelist(g, n);
+	return(!incidenceptr ? 0 : slgraph_read48(incidenceptr + SLGRAPH_SIZE));
+
+
+}
+uint_fast64_t slgraph_out_degree(const slgraph_t *g, slgraph_node_t n) {
+    const unsigned char *nodeptr = slgraph_nodelist(g) + SLGRAPH_LISTHEADERSIZE + n * SLGRAPH_NODESIZE;
+    uint64_t out_off = slgraph_read64(nodeptr + 0);
+    return (out_off ? slgraph_read48(g->ptr + out_off + SLGRAPH_SIZE) : 0);
+}
+
+uint_fast64_t slgraph_in_degree(const slgraph_t *g, slgraph_node_t n) {
+    const unsigned char *nodeptr = slgraph_nodelist(g) + SLGRAPH_LISTHEADERSIZE + n * SLGRAPH_NODESIZE;
+    uint64_t in_off = slgraph_read64(nodeptr + 8);
+    return (in_off ? slgraph_read48(g->ptr + in_off + SLGRAPH_SIZE) : 0);
+}
+
+
+slgraph_node_t slgraph_neighbour(const slgraph_t *g, slgraph_node_t n, uint_fast32_t i)
+{
+	slgraph_edge_t e = slgraph_incident(g, n, i);
+
+	if(e == SLGRAPH_INVALID_EDGE)
+		return(SLGRAPH_INVALID_NODE);
+
+	slgraph_node_t n0, n1;
+	slgraph_edge_ends(g, e, &n0, &n1);
+
+	return(n0 == n ? n1 : n0);
+}
+
+slgraph_node_t slgraph_out_neighbour(const slgraph_t *g, slgraph_node_t n, uint_fast32_t i) {
+    slgraph_edge_t e = slgraph_out_incident(g, n, i);
+    if (e == SLGRAPH_INVALID_EDGE) return SLGRAPH_INVALID_NODE;
+
+    slgraph_node_t src, dst;
+    slgraph_edge_ends(g, e, &src, &dst);
+    return (src == n ? dst : SLGRAPH_INVALID_NODE); // defensive check
+}
+
+slgraph_node_t slgraph_in_neighbour(const slgraph_t *g, slgraph_node_t n, uint_fast32_t i) {
+    slgraph_edge_t e = slgraph_in_incident(g, n, i);
+    if (e == SLGRAPH_INVALID_EDGE) return SLGRAPH_INVALID_NODE;
+
+    slgraph_node_t src, dst;
+    slgraph_edge_ends(g, e, &src, &dst);
+    return (dst == n ? src : SLGRAPH_INVALID_NODE); // defensive check
+}
+
+
+slgraph_edge_t slgraph_incident(const slgraph_t *g, slgraph_node_t n, uint_fast32_t i)
+{
+	const unsigned char *incidenceptr = slgraph_incidencelist(g, n);
+	return(!incidenceptr ? SLGRAPH_INVALID_EDGE : slgraph_read48(incidenceptr + SLGRAPH_LISTHEADERSIZE + i * SLGRAPH_INCIDENCESIZE));
+}
+slgraph_edge_t slgraph_out_incident(const slgraph_t *g, slgraph_node_t n, uint_fast32_t i) {
+    const unsigned char *nodeptr = slgraph_nodelist(g) + SLGRAPH_LISTHEADERSIZE + n * SLGRAPH_NODESIZE;
+    uint64_t out_off = slgraph_read64(nodeptr + 0);
+    if (!out_off) return SLGRAPH_INVALID_EDGE;
+    return slgraph_read48(g->ptr + out_off + SLGRAPH_LISTHEADERSIZE + i * SLGRAPH_INCIDENCESIZE);
+}
+
+slgraph_edge_t slgraph_in_incident(const slgraph_t *g, slgraph_node_t n, uint_fast32_t i) {
+    const unsigned char *nodeptr = slgraph_nodelist(g) + SLGRAPH_LISTHEADERSIZE + n * SLGRAPH_NODESIZE;
+    uint64_t in_off = slgraph_read64(nodeptr + 8);
+    if (!in_off) return SLGRAPH_INVALID_EDGE;
+    return slgraph_read48(g->ptr + in_off + SLGRAPH_LISTHEADERSIZE + i * SLGRAPH_INCIDENCESIZE);
+}
+
+void slgraph_edge_ends(const slgraph_t *g, slgraph_edge_t e, slgraph_node_t *n0, slgraph_node_t *n1)
+{
+	const unsigned char *ptr = slgraph_edgelist(g);
+	*n0 = slgraph_read48(ptr + SLGRAPH_LISTHEADERSIZE + e * SLGRAPH_EDGESIZE + 0);
+	*n1 = slgraph_read48(ptr + SLGRAPH_LISTHEADERSIZE + e * SLGRAPH_EDGESIZE + 6);
+}
+
+slgraph_node_t slgraph_add_node(slgraph_t *g) {
+    uint_fast64_t nodes = slgraph_nodes(g);
+    uint_fast64_t nodelist_size = slgraph_read48(slgraph_nodelist(g));
+
+    if (nodes >= nodelist_size)
+        if (slgraph_nodelist_expand(g, (nodes + 32) * 4))
+            return SLGRAPH_INVALID_NODE;
+
+    slgraph_node_t node = nodes;
+    slgraph_write48(slgraph_nodelist(g) + SLGRAPH_SIZE, node + 1);
+
+    unsigned char *nodeptr = slgraph_nodelist(g) + SLGRAPH_LISTHEADERSIZE + node * SLGRAPH_NODESIZE;
+
+    // Allocate out and in incidence lists
+    unsigned char *out_list = slgraph_add_incidencelist(g, 4);  // room for 4 neighbors
+    unsigned char *in_list  = slgraph_add_incidencelist(g, 4);
+
+    if (!out_list || !in_list)
+        return SLGRAPH_INVALID_NODE;
+
+    slgraph_write64(nodeptr + 0, out_list - g->ptr);   // out_offset
+    slgraph_write64(nodeptr + 8, in_list  - g->ptr);   // in_offset
+    slgraph_write48(nodeptr + 16, 0xffffffffffffull);  // default label
+
+    return node;
+}
+
+
+
+slgraph_edge_t slgraph_add_edge(slgraph_t *g, slgraph_node_t n0, slgraph_node_t n1)
+{
+	uint_fast64_t edges = slgraph_edges(g);
+	uint_fast64_t edgelist_size = slgraph_read48(slgraph_edgelist(g));
+
+	if(edges >= edgelist_size) // Allocate space at end of file, move edgelist there.
+	{
+		uint_fast64_t newedges = (edges + 32) * 4;
+		size_t oldsize = g->size;
+		size_t newsize = g->size + SLGRAPH_LISTHEADERSIZE + (edges + newedges) * SLGRAPH_EDGESIZE;
+		if(slgraph_resize(g, newsize))
+			return(SLGRAPH_INVALID_EDGE);
+		memcpy(g->ptr + (oldsize - g->free), slgraph_edgelist(g), SLGRAPH_LISTHEADERSIZE + edges * SLGRAPH_EDGESIZE);
+		slgraph_write64(g->ptr + SLGRAPH_HEADER_EDGELIST, oldsize - g->free);
+		slgraph_write48(slgraph_edgelist(g), edges + newedges);
+	}
+
+	slgraph_edge_t edge = edges;
+
+	unsigned char *edgeptr = slgraph_edgelist(g) + SLGRAPH_LISTHEADERSIZE + edge * SLGRAPH_EDGESIZE;
+
+	slgraph_write48(edgeptr + 0, n0);
+	slgraph_write48(edgeptr + 6, n1);
+	edgeptr[18] = 0;  // ✅ Mark edge as undirected
+
+
+	if(slgraph_make_incident(g, n0, edge))
+		return(SLGRAPH_INVALID_EDGE);
+
+	if(slgraph_make_incident(g, n1, edge))
+	{
+		slgraph_unmake_incident(g, n0, edge);
+		return(SLGRAPH_INVALID_EDGE);
+	}
+
+	slgraph_write48(slgraph_edgelist(g) + SLGRAPH_SIZE, edge + 1); // Increase the number of edges only if incidence list modification succeded.
+
+	return(edge);
+}
+

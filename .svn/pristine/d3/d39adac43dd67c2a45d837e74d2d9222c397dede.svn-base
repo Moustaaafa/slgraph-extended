@@ -1,0 +1,56 @@
+// A simple test program that uses basic operations.
+// It opens the graph in test.slg (and empty graph is created if test.slg does not exist),
+// lists all nodes and their degrees,
+// adds one node, and if the result has at least two nodes, adds an edge from the first to the last node.
+
+// Philipp Klaus Krause, philipp@informatik.uni-frankfurt.de, 2017.
+// Copyright (c) 2017 University of Leeds
+
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License along
+// with this program; if not, write to the Free Software Foundation, Inc.,
+// 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+#include <stdbool.h>
+#include <stdio.h>
+
+#include "slgraph.h"
+
+int main(void)
+{
+	slgraph_t g;
+
+	if(slgraph_open(&g, "test.slg", false))
+	{
+		printf("Failed to open test.slg.\n");
+		return(-1);
+	}
+
+	printf("Graph has %llu nodes and %llu edges.\n", (unsigned long long)slgraph_nodes(&g), (unsigned long long)slgraph_edges(&g));
+
+	for(slgraph_node_t n = 0; n < slgraph_nodes(&g); n++)
+		printf("Node %llu has degree %llu.\n", (unsigned long long)n, (unsigned long long)slgraph_degree(&g, n));
+
+	slgraph_node_t n = slgraph_add_node(&g);
+	printf("Added node %llu.\n", (unsigned long long)n);
+
+	if(n)
+	{
+		slgraph_add_edge(&g, n, 0);
+		printf("Added edge from %llu to %llu.\n", (unsigned long long)n, 0ull);
+	}
+
+	slgraph_close(&g);
+
+	return(0);
+}
+

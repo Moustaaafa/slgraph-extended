@@ -1,0 +1,17 @@
+This directory contains small example programs that illustrate the use of slgraph, and might even be useful.
+
+The programs can be compiled by invocing 'make <program_name>' (slgraph_convert depends on the igraph library)
+
+slgraph_test:
+
+A simple test program that uses basic operations.
+It opens the graph in test.slg (and empty graph is created if test.slg does not exist), lists all nodes and their degrees, adds one node, and if the result has at least two nodes, adds an edge from the first to the last node.
+
+slgraph_copy:
+
+A simple program for copying graphs. While copying, it eliminates unused space in the file, and can thus be used to compress slgraphs.
+
+slgraph_convert:
+
+A simple program for converting graphs to slgraph format. It reads a variety of graph formats (using the igraph library).
+

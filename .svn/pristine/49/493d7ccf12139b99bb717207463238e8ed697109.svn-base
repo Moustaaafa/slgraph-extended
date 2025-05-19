@@ -1,0 +1,46 @@
+Format specification:
+
+This files specifies version 1 of the slgraph format.
+
+It fully supports undirected multigraphs, including loops.
+There is limited support for directed multigraphs.
+
+The file consists of the following blocks:
+
+* File header
+* Node list
+* Edge list
+* Incidence lists
+* TODO: Specify support for labels later
+
+While the file header is at the beginning of the file, the other blocks can be at arbitrary locations in the file. There are no padding bytes inside blocks, but there may be padding between or after blocks.
+
+File header:
+* 8-byte magic number - the UTF-8 string "slgraph", 0-terminated.
+* 8-byte format version number - 1
+* 8-byte file size (in bytes)
+* 8-byte node list offset (from beginning of file)
+* 8-byte edge list offset (from beginning of file)
+* 6-byte label
+
+Node list:
+* 6-byte size (in potential number of nodes)
+* 6-byte number of nodes
+followed by entries as specified below.
+* 8-byte incidence list offset (0 if there are no incident edges)
+* 6-byte label
+
+Edge list:
+* 6-byte size (in potential number of edges)
+* 6-byte number of edges
+followed by entries as specified below.
+* 6-byte node0
+* 6-byte node1
+* 6-byte label
+
+Incidence list:
+* 6-byte size (in potential degree)
+* 6-byte degree
+followed by entries as specified below.
+* 6-byte edge
+

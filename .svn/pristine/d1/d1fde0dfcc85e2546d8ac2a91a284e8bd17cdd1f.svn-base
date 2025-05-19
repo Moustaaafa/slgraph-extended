@@ -1,0 +1,84 @@
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+struct slgraph_t
+{
+	int fd;
+	bool readonly;
+	unsigned char *ptr;
+	size_t size;
+	size_t free;
+};
+
+typedef struct slgraph_t slgraph_t;
+typedef uint_fast64_t slgraph_node_t;
+typedef uint_fast64_t slgraph_edge_t;
+
+#define SLGRAPH_INVALID_NODE UINT_FAST64_MAX
+#define SLGRAPH_INVALID_EDGE UINT_FAST64_MAX
+
+// When a slgraph object is valid for writes (after a successfull call to slgraph_new()
+// or slgraph_open() with parameter readonly set to false,
+// the underlying file might be in an inconsistent state until the graph is closed (e.g. via slgraph_close()).
+
+// Create a new, empty graph.
+// Returns 0 if successfull.
+int slgraph_new(slgraph_t *g);
+
+// Open the file at filename as g.
+// Returns 0 if successfull.
+// Complexity O(1).
+int slgraph_open(slgraph_t *g, const char *restrict filename, bool readonly);
+
+// Reserve space for up to a total of n nodes.
+// Ensures that the subsequent addition of up to (n - slgraph_nodes()) further nodes cannot fail and will happen in O(1) each.
+// Returns 0 if successfull. In case of error, no changes are made to g and g is closed.
+// Complexity O(slgraph_nodes()).
+int slgraph_nodelist_expand(slgraph_t *g, uint_fast64_t n);
+
+// Close g.
+// Ensure the underlying file is in a consistent state.
+// Complexity O(1).
+void slgraph_close(slgraph_t *g);
+
+// Make g a copy of h.
+// Compacts the graph while copying to reduce storage requirements.
+// Returns 0 if successfull. In case of error, no changes are made to g and g is closed.
+// Complexity O(slgraph_nodes() + slgraph_edges()).
+int slgraph_copy(slgraph_t *g, const slgraph_t *h);
+
+// Get the number of nodes in g.
+// Complexity O(1).
+uint_fast64_t slgraph_nodes(const slgraph_t *g);
+
+// Get the number of edges in g.
+// Complexity O(1).
+uint_fast64_t slgraph_edges(const slgraph_t *g);
+
+// Get the degree of n in g.
+// Complexity O(1).
+uint_fast64_t slgraph_degree(const slgraph_t *g, slgraph_node_t n);
+
+// Get the i-th neighbour of n in g (SLGRAPH_INVALID_NODE if there is no such neighbour).
+// Complexity O(1).
+slgraph_node_t slgraph_neighbour(const slgraph_t *g, slgraph_node_t n, uint_fast32_t i);
+
+// Get the i-th incident edge of n in g (SLGRAPH_INVALID_EDGE if there is no such edge).
+// Complexity O(1).
+slgraph_edge_t slgraph_incident(const slgraph_t *g, slgraph_node_t n, uint_fast32_t i);
+
+// Get the endpoints of edge e in g.
+// Complexity O(1).
+void slgraph_edge_ends(const slgraph_t *g, slgraph_edge_t e, slgraph_node_t *n0, slgraph_node_t *n1);
+
+// Add a node to G.
+// Returns the new node. On error, SLGRAPH_INVALID_NODE is returned, no changes are made to g and g is closed.
+// Worst-case-complexity O(slgraph_nodes()). Typical complexity O(1).
+slgraph_node_t slgraph_add_node(slgraph_t *g);
+
+// Add an edge from n0 to n1 to g.
+// Returns the new edge. On error, SLGRAPH_INVALID_EDGE is returned, no changes are made to g and g is closed.
+// Worst-case-complexity O(slgraph_edges()). Typical complexity O(1).
+slgraph_edge_t slgraph_add_edge(slgraph_t *g, slgraph_node_t n0, slgraph_node_t n1);
+
