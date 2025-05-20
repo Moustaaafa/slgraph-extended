@@ -22,7 +22,6 @@
 
 #include <stdbool.h>
 #include <stdio.h>
-
 #include "slgraph.h"
 
 int main(void)
@@ -42,7 +41,7 @@ int main(void)
 		return -1;
 	}
 
-	// Add 3 nodes: A (0), B (1), C (2)
+	// Add nodes: A (0), B (1), C (2)
 	slgraph_node_t a = slgraph_add_node(&g);
 	slgraph_node_t b = slgraph_add_node(&g);
 	slgraph_node_t c = slgraph_add_node(&g);
@@ -56,21 +55,66 @@ int main(void)
 	slgraph_add_directed_edge(&g, a, b);
 	slgraph_add_directed_edge(&g, b, c);
 
-	printf("Added directed edges: A → B and B → C\n");
+	printf("Added directed edges: A → B and B → C\n\n");
 
 	// Print in-degree and out-degree for each node
 	for (slgraph_node_t i = 0; i < slgraph_nodes(&g); i++) {
 		uint_fast64_t in_deg = slgraph_in_degree(&g, i);
 		uint_fast64_t out_deg = slgraph_out_degree(&g, i);
-		printf("Node %llu: out-degree=%llu, in-degree=%llu\n",
+		printf("Node %llu: out-degree = %llu, in-degree = %llu\n",
 		       (unsigned long long)i,
 		       (unsigned long long)out_deg,
 		       (unsigned long long)in_deg);
 	}
 
+	printf("\n✅ Degree functions tested.\n\n");
+
+	// Test neighbour access
+	for (slgraph_node_t i = 0; i < slgraph_nodes(&g); i++) {
+		uint_fast64_t out_deg = slgraph_out_degree(&g, i);
+		uint_fast64_t in_deg = slgraph_in_degree(&g, i);
+
+		printf("Node %llu out-neighbours: ", (unsigned long long)i);
+		for (uint_fast64_t j = 0; j < out_deg; j++) {
+			slgraph_node_t out_nb = slgraph_out_neighbour(&g, i, j);
+			printf("%llu ", (unsigned long long)out_nb);
+		}
+		printf("\n");
+
+		printf("Node %llu in-neighbours: ", (unsigned long long)i);
+		for (uint_fast64_t j = 0; j < in_deg; j++) {
+			slgraph_node_t in_nb = slgraph_in_neighbour(&g, i, j);
+			printf("%llu ", (unsigned long long)in_nb);
+		}
+		printf("\n");
+	}
+
+	printf("\n✅ Neighbour functions tested.\n\n");
+
+	// Test incident edge IDs
+	for (slgraph_node_t i = 0; i < slgraph_nodes(&g); i++) {
+		uint_fast64_t out_deg = slgraph_out_degree(&g, i);
+		uint_fast64_t in_deg = slgraph_in_degree(&g, i);
+
+		printf("Node %llu out-incident edge IDs: ", (unsigned long long)i);
+		for (uint_fast64_t j = 0; j < out_deg; j++) {
+			uint_fast64_t edge_id = slgraph_out_incident(&g, i, j);
+			printf("%llu ", (unsigned long long)edge_id);
+		}
+		printf("\n");
+
+		printf("Node %llu in-incident edge IDs: ", (unsigned long long)i);
+		for (uint_fast64_t j = 0; j < in_deg; j++) {
+			uint_fast64_t edge_id = slgraph_in_incident(&g, i, j);
+			printf("%llu ", (unsigned long long)edge_id);
+		}
+		printf("\n");
+	}
+
+	printf("\n✅ Incident edge functions tested.\n");
+
 	slgraph_close(&g);
-	printf("✅ Directed graph test completed.\n");
+	printf("\n✅ Directed graph test completed.\n");
 
 	return 0;
 }
-
