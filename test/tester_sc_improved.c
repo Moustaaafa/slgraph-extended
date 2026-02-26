@@ -146,29 +146,29 @@ int main(int argc, char **argv) {
 		if (mi < 1) mi = 1;
 
 		slgraph_node_t *queue = malloc(cutoff * sizeof(slgraph_node_t));
-			if (!queue) {
-				fprintf(stderr, "Out of memory for BFS queue (cutoff=%lu)\n", (unsigned long)cutoff);
-				slgraph_close(&g);
-				return 1;
-			}
+		if (!queue) {
+			fprintf(stderr, "Out of memory for BFS queue (cutoff=%lu)\n", (unsigned long)cutoff);
+			slgraph_close(&g);
+			return 1;
+		}
 
 		for (uint64_t sidx = 0; sidx < mi; sidx++) {
 			slgraph_node_t s = (slgraph_node_t)rng_range(&rng, n);
 
-				uint64_t fwd = bfs_cutoff_out(&g, s, cutoff, queue);
+			uint64_t fwd = bfs_cutoff_out(&g, s, cutoff, queue);
 
-				uint64_t rev = bfs_cutoff_in(&g, s, cutoff, queue);
+			uint64_t rev = bfs_cutoff_in(&g, s, cutoff, queue);
 
 			if (fwd < cutoff || rev < cutoff) {
 				const char *cause = (fwd < cutoff && rev < cutoff) ? "fwd+rev"
 				                   : (fwd < cutoff ? "fwd" : "rev");
-					printf("REJECT (s=%lu, cause=%s, cutoff=%lu, fwd=%lu, rev=%lu)\n",
-					       (unsigned long)s, cause, (unsigned long)cutoff,
-					       (unsigned long)fwd, (unsigned long)rev);
-					free(queue);
-					slgraph_close(&g);
-					return 0;
-				}
+				printf("REJECT (s=%lu, cause=%s, cutoff=%lu, fwd=%lu, rev=%lu)\n",
+				       (unsigned long)s, cause, (unsigned long)cutoff,
+				       (unsigned long)fwd, (unsigned long)rev);
+				free(queue);
+				slgraph_close(&g);
+				return 0;
+			}
 		}
 
 		free(queue);

@@ -54,8 +54,16 @@ test/slgraph_load_edgelist --undirected graph-edges.txt graph.slg
 
 ### 4) Run strong-connectivity tester
 
+Basic tester:
+
 ```bash
 test/slgraph_tester_basic graph.slg 0.05 8 1
+```
+
+Improved tester:
+
+```bash
+test/slgraph_tester_improved graph.slg 0.05 8 1
 ```
 
 Arguments:
@@ -75,6 +83,7 @@ cd ..
 
 test/slgraph_load_edgelist bamberg-edges.txt bamberg.slg
 test/slgraph_tester_basic bamberg.slg 0.05 8 1
+test/slgraph_tester_improved bamberg.slg 0.05 8 1
 ```
 
 If you start from OSM:
@@ -89,4 +98,5 @@ cd ..
 
 test/slgraph_load_edgelist bamberg-edges.txt bamberg.slg
 test/slgraph_tester_basic bamberg.slg 0.05 8 1
+test/slgraph_tester_improved bamberg.slg 0.05 8 1
 ```
