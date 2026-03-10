@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200">
+<defs><style>
+.bg{fill:#f8fafc}.card{fill:#ffffff;stroke:#cbd5e1;stroke-width:2}.title{font:700 36px Arial;fill:#0f172a}.sub{font:600 18px Arial;fill:#0369a1}.h{font:700 24px Arial;fill:#111827}.b{font:16px Arial;fill:#1f2937}.c{font:15px "Courier New", monospace;fill:#0b1220}.chip{fill:#e2e8f0;stroke:#94a3b8;stroke-width:1}.chiptext{font:700 14px Arial;fill:#334155}
+</style></defs>
+<rect class="bg" x="0" y="0" width="1800" height="1200"/>
+<rect x="0" y="0" width="1800" height="76" fill="#0f172a"/>
+<text class="title" x="50" y="130">SC Tester Methods (Reviewer Clarification Snapshot)</text>
+<text class="sub" x="52" y="166">mark[] removed in BOTH testers | queue-only duplicate checks | explicit d &gt; 1 required</text>
+<rect class="chip" x="52" y="188" rx="11" ry="11" width="127" height="28"/>
+<text class="chiptext" x="62" y="207">Queue-only BFS</text>
+<rect class="chip" x="191" y="188" rx="11" ry="11" width="87" height="28"/>
+<text class="chiptext" x="201" y="207">No mark[]</text>
+<rect class="chip" x="290" y="188" rx="11" ry="11" width="127" height="28"/>
+<text class="chiptext" x="300" y="207">d &gt; 1 enforced</text>
+<rect class="chip" x="429" y="188" rx="11" ry="11" width="239" height="28"/>
+<text class="chiptext" x="439" y="207">Constant wrt n (fixed eps,d)</text>
+<rect class="card" x="70" y="230" width="800" height="980" rx="14"/>
+<rect class="card" x="930" y="230" width="800" height="980" rx="14"/>
+<text class="h" x="90" y="272">Basic Tester Method (tester_sc_basic.c)</text>
+<text class="b" x="100" y="305">• Inputs: graph.slg, epsilon &gt; 0, d &gt; 1, optional seed</text>
+<text class="b" x="100" y="335">• L = ceil(6/(epsilon*d)); m = ceil((6*log(3))/(epsilon*d))</text>
+<text class="b" x="100" y="365">• For each sample: run forward + reverse bounded BFS (cutoff L)</text>
+<text class="b" x="100" y="395">• Reject if fwd &lt; L OR rev &lt; L; else ACCEPT after all m samples</text>
+<text class="b" x="100" y="425">• No mark[]; duplicate checks via queue_contains(queue, tail, nb)</text>
+<rect x="90" y="463" width="760" height="320" fill="#f1f5f9" stroke="#cbd5e1"/>
+<text class="c" x="108" y="493">for (uint64_t t = 0; t &lt; m; t++) {</text>
+<text class="c" x="108" y="523">  slgraph_node_t v = (slgraph_node_t)rng_range(&amp;rng, n);</text>
+<text class="c" x="108" y="553">  uint64_t fwd = bfs_cutoff_out(&amp;g, v, L, queue);</text>
+<text class="c" x="108" y="583">  uint64_t rev = bfs_cutoff_in(&amp;g, v, L, queue);</text>
+<text class="c" x="108" y="613">  if (fwd &lt; L || rev &lt; L) return REJECT;</text>
+<text class="c" x="108" y="643">}</text>
+<text class="c" x="108" y="673">return ACCEPT;</text>
+<text class="h" x="950" y="272">Improved Tester Method (tester_sc_improved.c)</text>
+<text class="b" x="960" y="305">• Inputs: graph.slg, epsilon &gt; 0, d &gt; 1, optional seed</text>
+<text class="b" x="960" y="335">• log_term=max(1,log(8/(epsilon*d))); iterations=ceil(log_term)</text>
+<text class="b" x="960" y="365">• Round i: cutoff=2^i, mi=ceil(32*log_term/(cutoff*epsilon*d))</text>
+<text class="b" x="960" y="395">• For each sample: forward + reverse bounded BFS at current cutoff</text>
+<text class="b" x="960" y="425">• Reject if fwd &lt; cutoff OR rev &lt; cutoff; else ACCEPT after all rounds</text>
+<text class="b" x="960" y="455">• No mark[]; duplicate checks via queue_contains(queue, tail, nb)</text>
+<rect x="950" y="493" width="760" height="380" fill="#f1f5f9" stroke="#cbd5e1"/>
+<text class="c" x="968" y="523">for (uint64_t i = 1; i &lt;= iterations; i++) {</text>
+<text class="c" x="968" y="553">  uint64_t cutoff = 1ULL &lt;&lt; i;</text>
+<text class="c" x="968" y="583">  uint64_t mi = ceil(32.0 * log_term / (cutoff*eps*d));</text>
+<text class="c" x="968" y="613">  for (uint64_t sidx = 0; sidx &lt; mi; sidx++) {</text>
+<text class="c" x="968" y="643">    uint64_t fwd = bfs_cutoff_out(&amp;g, s, cutoff, queue);</text>
+<text class="c" x="968" y="673">    uint64_t rev = bfs_cutoff_in(&amp;g, s, cutoff, queue);</text>
+<text class="c" x="968" y="703">    if (fwd &lt; cutoff || rev &lt; cutoff) return REJECT;</text>
+<text class="c" x="968" y="733">  }</text>
+<text class="c" x="968" y="763">}</text>
+<text class="c" x="968" y="793">return ACCEPT;</text>
+<text x="60" y="1170" style="font:600 14px Arial;fill:#64748b">Prepared for review email attachment</text>
+</svg>

@@ -72,6 +72,55 @@ Arguments:
 - `8`: explicit degree bound `d` (must be > 1)
 - `1`: RNG seed (optional)
 
+### 5) Run both testers over multiple seeds
+
+Use the helper script:
+
+```bash
+python3 run_20_tests.py graph.slg 0.05 8 1 20
+```
+
+What it does:
+- runs `test/slgraph_tester_basic` once per seed in the range `1..20`
+- runs `test/slgraph_tester_improved` once per seed in the range `1..20`
+- prints the final `ACCEPT` or `REJECT` line for each run
+- prints total accept/reject counts for both testers
+
+Arguments:
+- `graph.slg`: input slgraph file
+- `0.05`: epsilon
+- `8`: explicit degree bound `d`
+- `1`: first seed in the range
+- `20`: last seed in the range
+
+This is useful when you want to evaluate the randomized testers across
+multiple seeds instead of inspecting a single run only.
+
+### 6) Benchmark both testers over multiple seeds
+
+Use the benchmark script:
+
+```bash
+python3 benchmark_testers.py graph.slg 0.05 8 1 100
+```
+
+What it does:
+- runs the basic tester once per seed in the range `1..100`
+- runs the improved tester once per seed in the range `1..100`
+- measures wall-clock time for every run
+- reports total, average, minimum, and maximum runtime for each tester
+- reports the relative speedup of the improved tester against the basic tester
+
+Arguments:
+- `graph.slg`: input slgraph file
+- `0.05`: epsilon
+- `8`: explicit degree bound `d`
+- `1`: first seed in the range
+- `100`: last seed in the range
+
+This is useful when you want to compare runtime behavior rather than
+only acceptance and rejection counts.
+
 ## Example Run
 
 If you already have `bamberg-edges.txt`:
@@ -84,6 +133,8 @@ cd ..
 test/slgraph_load_edgelist bamberg-edges.txt bamberg.slg
 test/slgraph_tester_basic bamberg.slg 0.05 8 1
 test/slgraph_tester_improved bamberg.slg 0.05 8 1
+python3 run_20_tests.py bamberg.slg 0.05 8 1 20
+python3 benchmark_testers.py bamberg.slg 0.05 8 1 100
 ```
 
 If you start from OSM:
@@ -99,4 +150,6 @@ cd ..
 test/slgraph_load_edgelist bamberg-edges.txt bamberg.slg
 test/slgraph_tester_basic bamberg.slg 0.05 8 1
 test/slgraph_tester_improved bamberg.slg 0.05 8 1
+python3 run_20_tests.py bamberg.slg 0.05 8 1 20
+python3 benchmark_testers.py bamberg.slg 0.05 8 1 100
 ```
