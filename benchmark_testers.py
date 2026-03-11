@@ -21,14 +21,15 @@ def run_one(cmd):
     return dt, final
 
 
-def bench(exe, graph, eps, degree, seed_start, seed_end):
+def bench(exe, graph, eps, degree, seed_start, seed_end, use_seed):
     times = []
     accepts = 0
     rejects = 0
     sample_lines = []
 
     for seed in range(seed_start, seed_end + 1):
-        dt, final = run_one([exe, graph, eps, degree, str(seed)])
+        cmd = [exe, graph, eps, degree, str(seed)] if use_seed else [exe, graph]
+        dt, final = run_one(cmd)
         times.append(dt)
         if final.startswith("ACCEPT"):
             accepts += 1
@@ -79,8 +80,13 @@ def main():
 
     print(f"GRAPH={graph} eps={eps} d={degree} seeds={seed_start}..{seed_end}\n")
 
-    basic = bench("test/slgraph_tester_basic", graph, eps, degree, seed_start, seed_end)
-    improved = bench("test/slgraph_tester_improved", graph, eps, degree, seed_start, seed_end)
+    classical = bench("test/slgraph_tester_classical", graph, eps, degree, seed_start, seed_end, False)
+    basic = bench("test/slgraph_tester_basic", graph, eps, degree, seed_start, seed_end, True)
+    improved = bench("test/slgraph_tester_improved", graph, eps, degree, seed_start, seed_end, True)
+
+    print("CLASSICAL")
+    print_result("classical", classical)
+    print()
 
     print("BASIC")
     print_result("basic", basic)
@@ -93,6 +99,9 @@ def main():
     if improved["avg"] > 0:
         speedup = basic["avg"] / improved["avg"]
         print(f"speedup basic/improved={speedup:.3f}x")
+    if classical["avg"] > 0:
+        print(f"speedup classical/basic={classical['avg'] / basic['avg']:.3f}x")
+        print(f"speedup classical/improved={classical['avg'] / improved['avg']:.3f}x")
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ Extended fork of slgraph with support for directed graphs, testing utilities, an
 
 ```bash
 cd test
-make slgraph_load_edgelist slgraph_tester_basic
+make slgraph_load_edgelist slgraph_tester_basic slgraph_tester_improved slgraph_tester_classical
 cd ..
 ```
 
@@ -54,6 +54,12 @@ test/slgraph_load_edgelist --undirected graph-edges.txt graph.slg
 
 ### 4) Run strong-connectivity tester
 
+Classical tester:
+
+```bash
+test/slgraph_tester_classical graph.slg
+```
+
 Basic tester:
 
 ```bash
@@ -71,6 +77,12 @@ Arguments:
 - `0.05`: epsilon
 - `8`: explicit degree bound `d` (must be > 1)
 - `1`: RNG seed (optional)
+
+The classical tester performs a full-size reachability check using
+queue and visited arrays of size \(n\). It checks whether all vertices
+are reachable from a fixed start vertex in both the forward and reverse
+directions, which yields a standard \(O(n+m)\) strong-connectivity
+decision rather than a bounded-query property test.
 
 ### 5) Run both testers over multiple seeds
 
@@ -105,11 +117,12 @@ python3 benchmark_testers.py graph.slg 0.05 8 1 100
 ```
 
 What it does:
+- runs `test/slgraph_tester_classical` repeatedly for reference timing
 - runs the basic tester once per seed in the range `1..100`
 - runs the improved tester once per seed in the range `1..100`
 - measures wall-clock time for every run
 - reports total, average, minimum, and maximum runtime for each tester
-- reports the relative speedup of the improved tester against the basic tester
+- reports relative speedups between the classical, basic, and improved testers
 
 Arguments:
 - `graph.slg`: input slgraph file
@@ -131,6 +144,7 @@ make slgraph_load_edgelist slgraph_tester_basic
 cd ..
 
 test/slgraph_load_edgelist bamberg-edges.txt bamberg.slg
+test/slgraph_tester_classical bamberg.slg
 test/slgraph_tester_basic bamberg.slg 0.05 8 1
 test/slgraph_tester_improved bamberg.slg 0.05 8 1
 python3 run_20_tests.py bamberg.slg 0.05 8 1 20
@@ -148,6 +162,7 @@ make slgraph_load_edgelist slgraph_tester_basic
 cd ..
 
 test/slgraph_load_edgelist bamberg-edges.txt bamberg.slg
+test/slgraph_tester_classical bamberg.slg
 test/slgraph_tester_basic bamberg.slg 0.05 8 1
 test/slgraph_tester_improved bamberg.slg 0.05 8 1
 python3 run_20_tests.py bamberg.slg 0.05 8 1 20
