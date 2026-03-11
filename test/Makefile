@@ -1,6 +1,6 @@
 .PHONY: all clean
 
-all: slgraph_test slgraph_copy slgraph_convert slgraph_load_edgelist slgraph_tester_basic slgraph_tester_improved slgraph_tester_classical
+all: slgraph_test slgraph_copy slgraph_convert slgraph_load_edgelist slgraph_tester_basic slgraph_tester_improved slgraph_tester_classical slgraph_scc_count
 
 LIBFILES = ../include/slgraph.h ../src/slgraph.c
 
@@ -29,3 +29,6 @@ slgraph_tester_improved: tester_sc_improved.c $(LIBFILES)
 
 slgraph_tester_classical: tester_sc_classical.c $(LIBFILES)
 	gcc  -O2 -pedantic --std=c11 -D_POSIX_C_SOURCE=200809L -I../include ../src/slgraph.c tester_sc_classical.c -o slgraph_tester_classical
+
+slgraph_scc_count: slgraph_scc_count.c $(LIBFILES)
+	gcc  -O2 -pedantic --std=c11 -D_POSIX_C_SOURCE=200809L -I../include ../src/slgraph.c slgraph_scc_count.c -o slgraph_scc_count

@@ -7,7 +7,7 @@ Extended fork of slgraph with support for directed graphs, testing utilities, an
 
 ```bash
 cd test
-make slgraph_load_edgelist slgraph_tester_basic slgraph_tester_improved slgraph_tester_classical
+make slgraph_load_edgelist slgraph_tester_basic slgraph_tester_improved slgraph_tester_classical slgraph_scc_count
 cd ..
 ```
 
@@ -108,7 +108,27 @@ Arguments:
 This is useful when you want to evaluate the randomized testers across
 multiple seeds instead of inspecting a single run only.
 
-### 6) Benchmark both testers over multiple seeds
+### 6) Count strongly connected components
+
+Use the SCC counter:
+
+```bash
+./test/slgraph_scc_count graph.slg
+```
+
+What it does:
+- computes the exact number of strongly connected components in the graph
+- reports the size of the largest strongly connected component
+- uses a full-graph algorithm rather than a bounded-query tester
+
+Example output:
+
+```text
+Stats: nodes=1877327 edges=1981847 mode=scc_count
+SCCS=757310 largest=959690
+```
+
+### 7) Benchmark both testers over multiple seeds
 
 Use the benchmark script:
 
@@ -140,10 +160,11 @@ If you already have `bamberg-edges.txt`:
 
 ```bash
 cd test
-make slgraph_load_edgelist slgraph_tester_basic
+make slgraph_load_edgelist slgraph_tester_basic slgraph_tester_improved slgraph_tester_classical slgraph_scc_count
 cd ..
 
 test/slgraph_load_edgelist bamberg-edges.txt bamberg.slg
+./test/slgraph_scc_count bamberg.slg
 test/slgraph_tester_classical bamberg.slg
 test/slgraph_tester_basic bamberg.slg 0.05 8 1
 test/slgraph_tester_improved bamberg.slg 0.05 8 1
@@ -158,10 +179,11 @@ chmod +x scripts/prepare_edgelist.sh
 scripts/prepare_edgelist.sh --mode osm --input /path/to/bamberg.osm.pbf --output bamberg-edges.txt
 
 cd test
-make slgraph_load_edgelist slgraph_tester_basic
+make slgraph_load_edgelist slgraph_tester_basic slgraph_tester_improved slgraph_tester_classical slgraph_scc_count
 cd ..
 
 test/slgraph_load_edgelist bamberg-edges.txt bamberg.slg
+./test/slgraph_scc_count bamberg.slg
 test/slgraph_tester_classical bamberg.slg
 test/slgraph_tester_basic bamberg.slg 0.05 8 1
 test/slgraph_tester_improved bamberg.slg 0.05 8 1
